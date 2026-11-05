@@ -1,0 +1,16 @@
+{
+  "name": "walkie-talkie",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "server": "npm run dev -w @walkie/server",
+    "mobile": "npm run start -w @walkie/mobile",
+    "ios": "npm run ios -w @walkie/mobile",
+    "android": "npm run android -w @walkie/mobile",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  }
+}
