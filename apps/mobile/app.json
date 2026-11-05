@@ -37,7 +37,16 @@
           "backgroundColor": "#1E1F22"
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "react-native-audio-api",
+        {
+          "iosMicrophonePermission": "Allow $(PRODUCT_NAME) to use the microphone for push-to-talk.",
+          "androidPermissions": [
+            "android.permission.RECORD_AUDIO"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

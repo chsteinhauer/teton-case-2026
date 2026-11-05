@@ -39,13 +39,15 @@ Checks: `npm run typecheck`, `npm run lint`.
 - **Protocol** ([packages/shared/src/protocol.ts](packages/shared/src/protocol.ts)): JSON messages with a `type` discriminator. The app and the server import the same TypeScript union types, so a protocol change fails the type check on both sides.
 - **Channels** are a fixed list loaded at startup from [apps/server/src/data/channels.json](apps/server/src/data/channels.json) (test data; override with `CHANNELS_FILE=/path/to.json`). `GET /channels` returns them with live member counts and whether someone is talking. Joining an unknown channel returns an error.
 - **Server** ([apps/server/src/channels.ts](apps/server/src/channels.ts)): keeps channel membership in memory and runs floor control. `talk-start` is granted only when the channel is free; otherwise the server replies `talk-denied`. The floor is released on `talk-end`, on leave and on disconnect.
-- **Mobile**: the Channels screen lists the channels from `GET /channels`. Opening one connects through [useChannel.ts](apps/mobile/hooks/useChannel.ts): one WebSocket, automatic reconnect, and the members and current talker exposed as React state. The push-to-talk button is on the channel screen.
+- **Live overview**: a client that sends `watch-channels` gets a full `channels` snapshot (every channel's members and current talker) immediately and again after every join, leave and floor change. The overview only receives presence. Channel traffic (`talk-*`, and audio later) goes only to clients that have joined that channel.
+- **Mobile**: one WebSocket per app, owned by [services/connection.tsx](apps/mobile/services/connection.tsx). Screens declare what they want: the Channels screen watches the overview ([useChannels.ts](apps/mobile/hooks/useChannels.ts)) and a channel screen joins on mount and leaves on unmount ([useChannel.ts](apps/mobile/hooks/useChannel.ts)). The provider replays that state after a reconnect.
 
 ### Status
 
 | Piece | State |
 |-------|-------|
 | Static channel list, presence, floor control | Done |
+| Live channel overview (who is where, who is talking) | Done |
 | Audio capture / playback | Not started |
 | Audio transport | Not started (see below) |
 
@@ -54,6 +56,7 @@ Checks: `npm run typecheck`, `npm run lint`.
 - **Monorepo with npm workspaces.** One install, one PR for protocol changes, shared types without publishing a package. Expo SDK 58 detects workspaces automatically, so Metro needs no custom config.
 - **WebSockets for signalling.** Plain WebSockets cover everything up to audio: they're bidirectional, low latency and supported natively in React Native and Node.
 - **Static channels from a file.** It's predictable for demos and tests and needs no admin UI. Swapping the JSON file for a database later doesn't change the protocol.
+- **Snapshots, not deltas, for the overview.** With a handful of channels the full list is a few hundred bytes, and a client can't drift out of sync. At scale this would switch to per-channel deltas.
 - **Server-side floor control.** The server is the single source of truth for who is talking, which avoids two people grabbing the floor at once.
 - **Shared package consumed as TypeScript source.** It has no build step: Metro and `tsx` both compile it directly.
 - **Expo development build, not Expo Go.** Audio will need native modules.

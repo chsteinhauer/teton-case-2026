@@ -22,11 +22,11 @@ export type ChannelDef = {
   description?: string;
 };
 
-/** GET /channels response item: the definition plus live state. */
+/** A channel's definition plus its live state. */
 export type ChannelInfo = ChannelDef & {
-  memberCount: number;
-  /** Whether someone currently holds the floor. */
-  busy: boolean;
+  members: Member[];
+  /** Who currently holds the floor, if anyone. */
+  talker: ClientId | null;
 };
 
 export type ChannelsResponse = { channels: ChannelInfo[] };
@@ -36,6 +36,12 @@ export type ChannelsResponse = { channels: ChannelInfo[] };
 export type ClientMessage =
   | { type: "join"; channel: ChannelId; name: string }
   | { type: "leave" }
+  /**
+   * Receive a `channels` snapshot now and after every presence change in any
+   * channel. Used by the channel overview; carries no audio.
+   */
+  | { type: "watch-channels" }
+  | { type: "unwatch-channels" }
   /** Ask for the floor (push-to-talk pressed). */
   | { type: "talk-start" }
   /** Release the floor (push-to-talk released). */
@@ -48,6 +54,8 @@ export type Member = { id: ClientId; name: string };
 
 export type ServerMessage =
   | { type: "welcome"; clientId: ClientId }
+  /** Snapshot of all channels, sent to clients that sent `watch-channels`. */
+  | { type: "channels"; channels: ChannelInfo[] }
   | { type: "joined"; channel: ChannelId; members: Member[] }
   | { type: "member-joined"; member: Member }
   | { type: "member-left"; clientId: ClientId }

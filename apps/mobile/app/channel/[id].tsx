@@ -1,12 +1,10 @@
 import { colors } from "@/constants/colors";
 import { fonts } from "@/constants/fonts";
 import { useChannel } from "@/hooks/useChannel";
-import * as Device from "expo-device";
+import { deviceName } from "@/utils/device-name";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-const deviceName = Device.deviceName ?? Device.modelName ?? "Unknown device";
 
 export default function ChannelScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();

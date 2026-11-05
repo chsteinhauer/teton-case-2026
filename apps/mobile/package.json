@@ -7,6 +7,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/drawer": "^7.14.4",
+    "@walkie/shared": "*",
     "expo": "~58.0.23",
     "expo-constants": "~58.0.15",
     "expo-dev-client": "~58.0.18",
@@ -20,13 +21,13 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
+    "react-native-audio-api": "0.13.6",
     "react-native-gesture-handler": "~3.3.0",
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.11.1",
     "react-native-screens": "~4.30.1",
     "react-native-web": "^0.21.4",
-    "react-native-worklets": "0.13.0",
-    "@walkie/shared": "*"
+    "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
     "@types/react": "~19.3.0",

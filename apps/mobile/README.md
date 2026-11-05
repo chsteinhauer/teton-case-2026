@@ -20,7 +20,13 @@ After the first install, `npm run mobile` (Metro only) is enough. Rebuild only w
 
 ## Native folders
 
-`ios/` and `android/` are generated (Continuous Native Generation) and git-ignored. Configure native behaviour in `app.json`. To regenerate: `npx expo prebuild --clean` (in this folder).
+`ios/` and `android/` are generated (Continuous Native Generation) and git-ignored. Configure native behaviour in `app.json`.
+
+`expo run:ios|android` does **not** regenerate a folder that already exists. After adding a config plugin or changing permissions in `app.json`, regenerate first (in this folder), then rebuild:
+
+```bash
+npx expo prebuild            # or --clean to start from scratch
+```
 
 ## Server URL
 

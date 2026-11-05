@@ -34,6 +34,15 @@ export default function DrawerLayout() {
         }}
       />
       <Drawer.Screen
+        name="loopback"
+        options={{
+          title: "Audio loopback",
+          // Dev tool: hidden from the drawer in production builds.
+          drawerItemStyle: __DEV__ ? undefined : { display: "none" },
+          drawerIcon: ({ color, size }) => <Ionicons name="mic-outline" size={size} color={color as string} />,
+        }}
+      />
+      <Drawer.Screen
         name="about"
         options={{
           title: "About",

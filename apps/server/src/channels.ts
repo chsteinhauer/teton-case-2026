@@ -33,6 +33,8 @@ type Channel = {
  */
 export class ChannelHub {
   private channels = new Map<ChannelId, Channel>();
+  /** Clients watching the overview: they get a snapshot on every presence change. */
+  private watchers = new Set<Client>();
 
   constructor(defs: ChannelDef[]) {
     for (const def of defs) this.channels.set(def.id, { def, members: new Set(), talker: null });
@@ -48,14 +50,17 @@ export class ChannelHub {
       if (!msg) return this.send(client, { type: "error", message: "malformed message" });
       this.handle(client, msg);
     });
-    socket.on("close", () => this.leave(client));
+    socket.on("close", () => {
+      this.watchers.delete(client);
+      this.leave(client);
+    });
   }
 
   list(): ChannelInfo[] {
     return [...this.channels.values()].map(({ def, members, talker }) => ({
       ...def,
-      memberCount: members.size,
-      busy: talker !== null,
+      members: [...members].map(toMember),
+      talker,
     }));
   }
 
@@ -71,6 +76,12 @@ export class ChannelHub {
         return this.join(client, msg.channel, msg.name);
       case "leave":
         return this.leave(client);
+      case "watch-channels":
+        this.watchers.add(client);
+        return this.send(client, { type: "channels", channels: this.list() });
+      case "unwatch-channels":
+        this.watchers.delete(client);
+        return;
       case "talk-start":
         return this.talkStart(client);
       case "talk-end":
@@ -91,6 +102,7 @@ export class ChannelHub {
 
     this.send(client, { type: "joined", channel: channelId, members: [...channel.members].map(toMember) });
     this.broadcast(channel, { type: "member-joined", member: toMember(client) }, client);
+    this.notifyWatchers();
   }
 
   private leave(client: Client) {
@@ -101,6 +113,7 @@ export class ChannelHub {
     channel.members.delete(client);
     this.broadcast(channel, { type: "member-left", clientId: client.id });
     client.channel = null;
+    this.notifyWatchers();
   }
 
   private talkStart(client: Client) {
@@ -110,8 +123,10 @@ export class ChannelHub {
     if (channel.talker && channel.talker !== client.id) {
       return this.send(client, { type: "talk-denied", heldBy: channel.talker });
     }
+    if (channel.talker === client.id) return; // already holds the floor
     channel.talker = client.id;
     this.broadcast(channel, { type: "talk-started", clientId: client.id });
+    this.notifyWatchers();
   }
 
   private talkEnd(client: Client) {
@@ -119,6 +134,17 @@ export class ChannelHub {
     if (!channel || channel.talker !== client.id) return;
     channel.talker = null;
     this.broadcast(channel, { type: "talk-ended", clientId: client.id });
+    this.notifyWatchers();
+  }
+
+  /**
+   * Push a full snapshot to overview watchers. Snapshots (not deltas) keep the
+   * client trivially correct; at a handful of channels the payload is tiny.
+   */
+  private notifyWatchers() {
+    if (this.watchers.size === 0) return;
+    const msg: ServerMessage = { type: "channels", channels: this.list() };
+    for (const watcher of this.watchers) this.send(watcher, msg);
   }
 
   private send(client: Client, msg: ServerMessage) {

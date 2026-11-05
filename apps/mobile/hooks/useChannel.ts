@@ -1,76 +1,53 @@
-import { SERVER_WS_URL } from "@/services/server";
-import { decode, encode, type ClientId, type ClientMessage, type Member, type ServerMessage } from "@walkie/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
-
-export type ConnectionStatus = "connecting" | "open" | "closed";
+import { useConnection } from "@/services/connection";
+import type { ClientId, Member } from "@walkie/shared";
+import { useCallback, useEffect, useState } from "react";
 
 /**
- * Connects to the server, joins `channel`, and tracks members and who holds
- * the floor. Reconnects with a fixed delay when the socket drops.
+ * Joins `channel` on the shared connection while mounted and leaves on
+ * unmount. Tracks members and who holds the floor. (Audio will flow only to
+ * joined members — the overview never receives it.)
  */
 export function useChannel(channel: string, name: string) {
-  const [status, setStatus] = useState<ConnectionStatus>("connecting");
-  const [selfId, setSelfId] = useState<ClientId | null>(null);
+  const { status, selfId, addListener, joinChannel, leaveChannel, send } = useConnection();
   const [members, setMembers] = useState<Member[]>([]);
   const [talker, setTalker] = useState<ClientId | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    let disposed = false;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-
-    const connect = () => {
-      setStatus("connecting");
-      const ws = new WebSocket(SERVER_WS_URL);
-      socketRef.current = ws;
-
-      ws.onopen = () => {
-        setStatus("open");
-        setError(null);
-        ws.send(encode({ type: "join", channel, name }));
-      };
-      ws.onmessage = (event) => {
-        const msg = decode<ServerMessage>(String(event.data));
-        if (!msg) return;
-        switch (msg.type) {
-          case "welcome":
-            return setSelfId(msg.clientId);
-          case "joined":
-            return setMembers(msg.members);
-          case "member-joined":
-            return setMembers((m) => [...m, msg.member]);
-          case "member-left":
-            setTalker((t) => (t === msg.clientId ? null : t));
-            return setMembers((m) => m.filter((x) => x.id !== msg.clientId));
-          case "talk-started":
-            return setTalker(msg.clientId);
-          case "talk-ended":
-            return setTalker((t) => (t === msg.clientId ? null : t));
-          case "error":
-            return setError(msg.message);
-        }
-      };
-      ws.onclose = () => {
-        setStatus("closed");
-        setMembers([]);
-        setTalker(null);
-        if (!disposed) retry = setTimeout(connect, 2000);
-      };
-    };
-
-    connect();
+    const removeListener = addListener((msg) => {
+      switch (msg.type) {
+        case "joined":
+          if (msg.channel !== channel) return;
+          setError(null);
+          return setMembers(msg.members);
+        case "member-joined":
+          return setMembers((m) => [...m.filter((x) => x.id !== msg.member.id), msg.member]);
+        case "member-left":
+          setTalker((t) => (t === msg.clientId ? null : t));
+          return setMembers((m) => m.filter((x) => x.id !== msg.clientId));
+        case "talk-started":
+          return setTalker(msg.clientId);
+        case "talk-ended":
+          return setTalker((t) => (t === msg.clientId ? null : t));
+        case "error":
+          return setError(msg.message);
+      }
+    });
+    joinChannel(channel, name);
     return () => {
-      disposed = true;
-      clearTimeout(retry);
-      socketRef.current?.close();
+      leaveChannel();
+      removeListener();
     };
-  }, [channel, name]);
+  }, [channel, name, addListener, joinChannel, leaveChannel]);
 
-  const send = useCallback((msg: ClientMessage) => {
-    const ws = socketRef.current;
-    if (ws?.readyState === WebSocket.OPEN) ws.send(encode(msg));
-  }, []);
+  // A dropped connection loses membership; the provider re-joins on reconnect
+  // and the fresh `joined` message repopulates this.
+  useEffect(() => {
+    if (status !== "open") {
+      setMembers([]);
+      setTalker(null);
+    }
+  }, [status]);
 
   const startTalking = useCallback(() => send({ type: "talk-start" }), [send]);
   const stopTalking = useCallback(() => send({ type: "talk-end" }), [send]);
