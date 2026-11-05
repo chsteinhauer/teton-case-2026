@@ -1,10 +1,11 @@
 /**
  * WebSocket protocol between the mobile app and the server.
  *
- * Every message is JSON with a `type` discriminator, so both sides can
- * `switch (msg.type)` and get full type narrowing. Audio is not defined yet —
- * it will most likely travel as binary frames alongside these control
- * messages rather than as base64 inside JSON.
+ * Control messages are JSON text frames with a `type` discriminator, so both
+ * sides can `switch (msg.type)` and get full type narrowing. Audio travels as
+ * binary frames on the same socket (format in ./audio.ts): the talker sends
+ * them after `talk-start`, and the server relays them only while that client
+ * holds the floor, only to members of its channel.
  */
 
 export const DEFAULT_SERVER_PORT = 3000;
@@ -56,7 +57,8 @@ export type ServerMessage =
   | { type: "welcome"; clientId: ClientId }
   /** Snapshot of all channels, sent to clients that sent `watch-channels`. */
   | { type: "channels"; channels: ChannelInfo[] }
-  | { type: "joined"; channel: ChannelId; members: Member[] }
+  /** `talker` is set if you joined mid-transmission. */
+  | { type: "joined"; channel: ChannelId; members: Member[]; talker: ClientId | null }
   | { type: "member-joined"; member: Member }
   | { type: "member-left"; clientId: ClientId }
   /** Someone holds the floor. `clientId` may be yourself (grant). */

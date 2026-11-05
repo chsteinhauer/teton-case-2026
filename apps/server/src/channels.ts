@@ -10,7 +10,16 @@ import {
   type ServerMessage,
 } from "@walkie/shared";
 import { randomUUID } from "node:crypto";
-import type { WebSocket } from "ws";
+import type { RawData, WebSocket } from "ws";
+
+/** Largest audio frame we relay: header + 100 ms at 48 kHz int16 is ~9.6 KB. */
+const MAX_AUDIO_FRAME_BYTES = 16 * 1024;
+/**
+ * Skip a listener whose socket already has this much unsent data queued
+ * (~250 ms of 16 kHz audio). For live voice a short dropout beats a delay
+ * that keeps growing.
+ */
+const MAX_LISTENER_BACKLOG_BYTES = 8 * 1024;
 
 type Client = {
   id: ClientId;
@@ -35,6 +44,7 @@ export class ChannelHub {
   private channels = new Map<ChannelId, Channel>();
   /** Clients watching the overview: they get a snapshot on every presence change. */
   private watchers = new Set<Client>();
+  private audio = { relayed: 0, droppedNotTalker: 0, droppedBacklog: 0 };
 
   constructor(defs: ChannelDef[]) {
     for (const def of defs) this.channels.set(def.id, { def, members: new Set(), talker: null });
@@ -45,7 +55,7 @@ export class ChannelHub {
     this.send(client, { type: "welcome", clientId: client.id });
 
     socket.on("message", (data, isBinary) => {
-      if (isBinary) return; // audio frames: not implemented yet
+      if (isBinary) return this.relayAudio(client, data);
       const msg = decode<ClientMessage>(data.toString());
       if (!msg) return this.send(client, { type: "error", message: "malformed message" });
       this.handle(client, msg);
@@ -67,7 +77,7 @@ export class ChannelHub {
   stats() {
     let clients = 0;
     for (const ch of this.channels.values()) clients += ch.members.size;
-    return { channels: this.channels.size, clients };
+    return { channels: this.channels.size, clients, audio: this.audio };
   }
 
   private handle(client: Client, msg: ClientMessage) {
@@ -100,7 +110,12 @@ export class ChannelHub {
     client.channel = channelId;
     channel.members.add(client);
 
-    this.send(client, { type: "joined", channel: channelId, members: [...channel.members].map(toMember) });
+    this.send(client, {
+      type: "joined",
+      channel: channelId,
+      members: [...channel.members].map(toMember),
+      talker: channel.talker,
+    });
     this.broadcast(channel, { type: "member-joined", member: toMember(client) }, client);
     this.notifyWatchers();
   }
@@ -145,6 +160,33 @@ export class ChannelHub {
     if (this.watchers.size === 0) return;
     const msg: ServerMessage = { type: "channels", channels: this.list() };
     for (const watcher of this.watchers) this.send(watcher, msg);
+  }
+
+  /**
+   * Forward an audio frame from the floor holder to the rest of its channel.
+   * Frames from anyone else are dropped, which makes optimistic sending safe:
+   * a client may stream right after `talk-start`, and the server (processing
+   * that socket's messages in order) has already granted or denied it.
+   * The server never decodes audio; overview watchers never receive it.
+   */
+  private relayAudio(client: Client, data: RawData) {
+    const channel = client.channel ? this.channels.get(client.channel) : undefined;
+    if (!channel || channel.talker !== client.id) {
+      this.audio.droppedNotTalker++;
+      return;
+    }
+    const frame = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
+    if (frame.byteLength > MAX_AUDIO_FRAME_BYTES) return;
+
+    for (const member of channel.members) {
+      if (member === client || member.socket.readyState !== member.socket.OPEN) continue;
+      if (member.socket.bufferedAmount > MAX_LISTENER_BACKLOG_BYTES) {
+        this.audio.droppedBacklog++;
+        continue;
+      }
+      member.socket.send(frame, { binary: true });
+      this.audio.relayed++;
+    }
   }
 
   private send(client: Client, msg: ServerMessage) {

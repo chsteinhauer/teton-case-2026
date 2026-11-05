@@ -39,7 +39,8 @@ Checks: `npm run typecheck`, `npm run lint`.
 - **Protocol** ([packages/shared/src/protocol.ts](packages/shared/src/protocol.ts)): JSON messages with a `type` discriminator. The app and the server import the same TypeScript union types, so a protocol change fails the type check on both sides.
 - **Channels** are a fixed list loaded at startup from [apps/server/src/data/channels.json](apps/server/src/data/channels.json) (test data; override with `CHANNELS_FILE=/path/to.json`). `GET /channels` returns them with live member counts and whether someone is talking. Joining an unknown channel returns an error.
 - **Server** ([apps/server/src/channels.ts](apps/server/src/channels.ts)): keeps channel membership in memory and runs floor control. `talk-start` is granted only when the channel is free; otherwise the server replies `talk-denied`. The floor is released on `talk-end`, on leave and on disconnect.
-- **Live overview**: a client that sends `watch-channels` gets a full `channels` snapshot (every channel's members and current talker) immediately and again after every join, leave and floor change. The overview only receives presence. Channel traffic (`talk-*`, and audio later) goes only to clients that have joined that channel.
+- **Live overview**: a client that sends `watch-channels` gets a full `channels` snapshot (every channel's members and current talker) immediately and again after every join, leave and floor change. The overview only receives presence. Channel traffic (`talk-*` and audio) goes only to clients that have joined that channel.
+- **Audio** ([packages/shared/src/audio.ts](packages/shared/src/audio.ts)): 16 kHz mono 16-bit PCM in 40 ms frames (~1.3 KB, ~32 KB/s per talker), sent as binary WebSocket frames with a 6-byte header (version, sequence number, sample rate). The talker streams right after `talk-start` without waiting for the grant. The server processes each socket's messages in order and relays frames only from the floor holder, so a denied talker's audio is simply dropped. Listeners play through a jitter buffer ([apps/mobile/services/audio/player.ts](apps/mobile/services/audio/player.ts)) that collects ~120 ms before playing and re-buffers if the stream falls behind. Audio uses `react-native-audio-api` for both mic capture and playback, so one library owns the OS audio session.
 - **Mobile**: one WebSocket per app, owned by [services/connection.tsx](apps/mobile/services/connection.tsx). Screens declare what they want: the Channels screen watches the overview ([useChannels.ts](apps/mobile/hooks/useChannels.ts)) and a channel screen joins on mount and leaves on unmount ([useChannel.ts](apps/mobile/hooks/useChannel.ts)). The provider replays that state after a reconnect.
 
 ### Status
@@ -48,20 +49,22 @@ Checks: `npm run typecheck`, `npm run lint`.
 |-------|-------|
 | Static channel list, presence, floor control | Done |
 | Live channel overview (who is where, who is talking) | Done |
-| Audio capture / playback | Not started |
-| Audio transport | Not started (see below) |
+| Live push-to-talk audio | Done |
+| Opus compression, background talking | Not started |
 
 ## Decisions
 
 - **Monorepo with npm workspaces.** One install, one PR for protocol changes, shared types without publishing a package. Expo SDK 58 detects workspaces automatically, so Metro needs no custom config.
-- **WebSockets for signalling.** Plain WebSockets cover everything up to audio: they're bidirectional, low latency and supported natively in React Native and Node.
+- **One WebSocket for control and audio.** JSON for control, binary frames for audio, on one ordered connection. Because control and audio share an order, the server can enforce the floor with no extra handshake. It works through any NAT. TCP can stall briefly on packet loss, but push-to-talk tolerates ~200–300 ms of latency, and the jitter buffer smooths the rest.
 - **Static channels from a file.** It's predictable for demos and tests and needs no admin UI. Swapping the JSON file for a database later doesn't change the protocol.
 - **Snapshots, not deltas, for the overview.** With a handful of channels the full list is a few hundred bytes, and a client can't drift out of sync. At scale this would switch to per-channel deltas.
 - **Server-side floor control.** The server is the single source of truth for who is talking, which avoids two people grabbing the floor at once.
 - **Shared package consumed as TypeScript source.** It has no build step: Metro and `tsx` both compile it directly.
-- **Expo development build, not Expo Go.** Audio will need native modules.
+- **Expo development build, not Expo Go.** Audio needs native modules.
+- **Uncompressed 16-bit PCM for now.** 32 KB/s is trivial on Wi-Fi. Opus would cut that roughly tenfold, but needs a native encoder that's not available off the shelf in Expo.
+- **Library workarounds (react-native-audio-api 0.13.6):** the queue player ignores a buffer's sample rate, so the player converts frames to the output rate itself, and `start()` must be called with explicit arguments.
 
-_Open question: audio transport. One option is binary WebSocket frames relayed by the server, which is simple and works through NAT. The other is WebRTC, which has lower latency and is peer-to-peer but needs TURN/SFU infrastructure._
+_Alternative considered: WebRTC. It has lower latency over UDP and built-in echo cancellation, but needs offer/answer signalling, STUN/TURN servers and, for groups, a media server (SFU). That's the right move at scale, not for this case._
 
 ## Scaling concept
 

@@ -12,6 +12,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 export type ConnectionStatus = "connecting" | "open" | "closed";
 
 type Listener = (msg: ServerMessage) => void;
+type BinaryListener = (data: ArrayBuffer) => void;
 
 type ConnectionApi = {
   status: ConnectionStatus;
@@ -19,6 +20,10 @@ type ConnectionApi = {
   selfId: ClientId | null;
   /** Receive every server message. Returns an unsubscribe function. */
   addListener: (listener: Listener) => () => void;
+  /** Receive binary frames (audio). Returns an unsubscribe function. */
+  addBinaryListener: (listener: BinaryListener) => () => void;
+  /** Send a binary frame (audio). Dropped silently if the socket isn't open. */
+  sendBinary: (data: ArrayBuffer) => void;
   /** Subscribe to channel overview snapshots. Returns an unsubscribe function. */
   watchChannels: () => () => void;
   joinChannel: (channel: ChannelId, name: string) => void;
@@ -43,6 +48,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
 
   const socketRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef(new Set<Listener>());
+  const binaryListenersRef = useRef(new Set<BinaryListener>());
   // Desired state, replayed on every (re)connect.
   const watchCountRef = useRef(0);
   const joinedRef = useRef<{ channel: ChannelId; name: string } | null>(null);
@@ -52,6 +58,11 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     if (ws?.readyState === WebSocket.OPEN) ws.send(encode(msg));
   }, []);
 
+  const sendBinary = useCallback((data: ArrayBuffer) => {
+    const ws = socketRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(data);
+  }, []);
+
   useEffect(() => {
     let disposed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -59,6 +70,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     const connect = () => {
       setStatus("connecting");
       const ws = new WebSocket(SERVER_WS_URL);
+      ws.binaryType = "arraybuffer";
       socketRef.current = ws;
 
       ws.onopen = () => {
@@ -68,6 +80,10 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         if (joined) ws.send(encode({ type: "join", channel: joined.channel, name: joined.name }));
       };
       ws.onmessage = (event) => {
+        if (typeof event.data !== "string") {
+          for (const listener of binaryListenersRef.current) listener(event.data as ArrayBuffer);
+          return;
+        }
         const msg = decode<ServerMessage>(String(event.data));
         if (!msg) return;
         if (msg.type === "welcome") setSelfId(msg.clientId);
@@ -95,6 +111,13 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
+  const addBinaryListener = useCallback((listener: BinaryListener) => {
+    binaryListenersRef.current.add(listener);
+    return () => {
+      binaryListenersRef.current.delete(listener);
+    };
+  }, []);
+
   const watchChannels = useCallback(() => {
     watchCountRef.current += 1;
     if (watchCountRef.current === 1) send({ type: "watch-channels" });
@@ -118,8 +141,18 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   }, [send]);
 
   const api = useMemo(
-    () => ({ status, selfId, addListener, watchChannels, joinChannel, leaveChannel, send }),
-    [status, selfId, addListener, watchChannels, joinChannel, leaveChannel, send],
+    () => ({
+      status,
+      selfId,
+      addListener,
+      addBinaryListener,
+      watchChannels,
+      joinChannel,
+      leaveChannel,
+      send,
+      sendBinary,
+    }),
+    [status, selfId, addListener, addBinaryListener, watchChannels, joinChannel, leaveChannel, send, sendBinary],
   );
 
   return <ConnectionContext.Provider value={api}>{children}</ConnectionContext.Provider>;

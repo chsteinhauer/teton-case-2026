@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export default function ChannelScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const insets = useSafeAreaInsets();
-  const { status, error, selfId, members, talker, startTalking, stopTalking } = useChannel(id, deviceName);
+  const { status, error, micError, selfId, members, talker, startTalking, stopTalking } = useChannel(id, deviceName);
 
   const iAmTalking = talker !== null && talker === selfId;
   const someoneElseTalking = talker !== null && !iAmTalking;
@@ -54,8 +54,8 @@ export default function ChannelScreen() {
         }}
       />
 
-      <Text style={[styles.talker, { color: iAmTalking ? colors.success : colors.warning }]}>
-        {iAmTalking ? "You are talking" : someoneElseTalking ? `${talkerName ?? "Someone"} is talking` : " "}
+      <Text style={[styles.talker, { color: micError ? colors.danger : iAmTalking ? colors.success : colors.warning }]}>
+        {micError ?? (iAmTalking ? "You are talking" : someoneElseTalking ? `${talkerName ?? "Someone"} is talking` : " ")}
       </Text>
 
       <Pressable
