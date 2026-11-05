@@ -13,6 +13,7 @@ export function useChannel(channel: string, name: string) {
   const [selfId, setSelfId] = useState<ClientId | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [talker, setTalker] = useState<ClientId | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export function useChannel(channel: string, name: string) {
 
       ws.onopen = () => {
         setStatus("open");
+        setError(null);
         ws.send(encode({ type: "join", channel, name }));
       };
       ws.onmessage = (event) => {
@@ -45,6 +47,8 @@ export function useChannel(channel: string, name: string) {
             return setTalker(msg.clientId);
           case "talk-ended":
             return setTalker((t) => (t === msg.clientId ? null : t));
+          case "error":
+            return setError(msg.message);
         }
       };
       ws.onclose = () => {
@@ -71,5 +75,5 @@ export function useChannel(channel: string, name: string) {
   const startTalking = useCallback(() => send({ type: "talk-start" }), [send]);
   const stopTalking = useCallback(() => send({ type: "talk-end" }), [send]);
 
-  return { status, selfId, members, talker, startTalking, stopTalking };
+  return { status, error, selfId, members, talker, startTalking, stopTalking };
 }

@@ -1,0 +1,7 @@
+[
+  { "id": "general", "name": "general", "description": "Everyone, all the time" },
+  { "id": "ward-a", "name": "ward-a", "description": "Staff on ward A" },
+  { "id": "ward-b", "name": "ward-b", "description": "Staff on ward B" },
+  { "id": "night-shift", "name": "night-shift", "description": "Night shift coordination" },
+  { "id": "emergency", "name": "emergency", "description": "Urgent calls only" }
+]

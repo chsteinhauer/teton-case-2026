@@ -18,7 +18,7 @@ export default function InfoBox({ title, children }: Props) {
 
 const styles = StyleSheet.create({
   box: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     gap: 6,

@@ -37,14 +37,15 @@ Checks: `npm run typecheck`, `npm run lint`.
 ```
 
 - **Protocol** ([packages/shared/src/protocol.ts](packages/shared/src/protocol.ts)): JSON messages with a `type` discriminator. The app and the server import the same TypeScript union types, so a protocol change fails the type check on both sides.
+- **Channels** are a fixed list loaded at startup from [apps/server/src/data/channels.json](apps/server/src/data/channels.json) (test data; override with `CHANNELS_FILE=/path/to.json`). `GET /channels` returns them with live member counts and whether someone is talking. Joining an unknown channel returns an error.
 - **Server** ([apps/server/src/channels.ts](apps/server/src/channels.ts)): keeps channel membership in memory and runs floor control. `talk-start` is granted only when the channel is free; otherwise the server replies `talk-denied`. The floor is released on `talk-end`, on leave and on disconnect.
-- **Mobile** ([apps/mobile/hooks/useChannel.ts](apps/mobile/hooks/useChannel.ts)): one WebSocket per app, automatic reconnect, and the members and current talker exposed as React state. The push-to-talk button is on the Home screen.
+- **Mobile**: the Channels screen lists the channels from `GET /channels`. Opening one connects through [useChannel.ts](apps/mobile/hooks/useChannel.ts): one WebSocket, automatic reconnect, and the members and current talker exposed as React state. The push-to-talk button is on the channel screen.
 
 ### Status
 
 | Piece | State |
 |-------|-------|
-| Channels, presence, floor control | Done |
+| Static channel list, presence, floor control | Done |
 | Audio capture / playback | Not started |
 | Audio transport | Not started (see below) |
 
@@ -52,6 +53,7 @@ Checks: `npm run typecheck`, `npm run lint`.
 
 - **Monorepo with npm workspaces.** One install, one PR for protocol changes, shared types without publishing a package. Expo SDK 58 detects workspaces automatically, so Metro needs no custom config.
 - **WebSockets for signalling.** Plain WebSockets cover everything up to audio: they're bidirectional, low latency and supported natively in React Native and Node.
+- **Static channels from a file.** It's predictable for demos and tests and needs no admin UI. Swapping the JSON file for a database later doesn't change the protocol.
 - **Server-side floor control.** The server is the single source of truth for who is talking, which avoids two people grabbing the floor at once.
 - **Shared package consumed as TypeScript source.** It has no build step: Metro and `tsx` both compile it directly.
 - **Expo development build, not Expo Go.** Audio will need native modules.

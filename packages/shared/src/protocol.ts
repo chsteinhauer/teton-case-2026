@@ -13,6 +13,24 @@ export const WS_PATH = "/ws";
 export type ChannelId = string;
 export type ClientId = string;
 
+// ---- Channels (static definitions + live info over HTTP) ----
+
+/** A channel as defined in the server's channel list. */
+export type ChannelDef = {
+  id: ChannelId;
+  name: string;
+  description?: string;
+};
+
+/** GET /channels response item: the definition plus live state. */
+export type ChannelInfo = ChannelDef & {
+  memberCount: number;
+  /** Whether someone currently holds the floor. */
+  busy: boolean;
+};
+
+export type ChannelsResponse = { channels: ChannelInfo[] };
+
 // ---- Client → server ----
 
 export type ClientMessage =

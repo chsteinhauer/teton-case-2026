@@ -27,7 +27,7 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.backgroundDeep,
     paddingHorizontal: 24,
     justifyContent: "space-between",
   },
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   button: {
-    backgroundColor: colors.backgroundInverse,
+    backgroundColor: colors.accent,
     borderRadius: 999,
     paddingVertical: 16,
     alignItems: "center",
@@ -56,6 +56,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: fonts.medium,
     fontSize: 16,
-    color: colors.textInverse,
+    color: colors.textOnAccent,
   },
 });

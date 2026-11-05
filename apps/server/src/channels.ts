@@ -1,7 +1,9 @@
 import {
   decode,
   encode,
+  type ChannelDef,
   type ChannelId,
+  type ChannelInfo,
   type ClientId,
   type ClientMessage,
   type Member,
@@ -18,14 +20,23 @@ type Client = {
 };
 
 type Channel = {
+  def: ChannelDef;
   members: Set<Client>;
   /** Half-duplex: at most one talker per channel. */
   talker: ClientId | null;
 };
 
-/** In-memory channel membership and floor control. Single process only. */
+/**
+ * In-memory channel membership and floor control. Single process only.
+ * The set of channels is fixed at startup (see channel-defs.ts); joining an
+ * unknown channel is an error.
+ */
 export class ChannelHub {
   private channels = new Map<ChannelId, Channel>();
+
+  constructor(defs: ChannelDef[]) {
+    for (const def of defs) this.channels.set(def.id, { def, members: new Set(), talker: null });
+  }
 
   connect(socket: WebSocket) {
     const client: Client = { id: randomUUID(), name: "anonymous", socket, channel: null };
@@ -38,6 +49,14 @@ export class ChannelHub {
       this.handle(client, msg);
     });
     socket.on("close", () => this.leave(client));
+  }
+
+  list(): ChannelInfo[] {
+    return [...this.channels.values()].map(({ def, members, talker }) => ({
+      ...def,
+      memberCount: members.size,
+      busy: talker !== null,
+    }));
   }
 
   stats() {
@@ -62,15 +81,12 @@ export class ChannelHub {
   }
 
   private join(client: Client, channelId: ChannelId, name: string) {
+    const channel = this.channels.get(channelId);
+    if (!channel) return this.send(client, { type: "error", message: `unknown channel: ${channelId}` });
+
     this.leave(client);
     client.name = name;
     client.channel = channelId;
-
-    let channel = this.channels.get(channelId);
-    if (!channel) {
-      channel = { members: new Set(), talker: null };
-      this.channels.set(channelId, channel);
-    }
     channel.members.add(client);
 
     this.send(client, { type: "joined", channel: channelId, members: [...channel.members].map(toMember) });
@@ -84,7 +100,6 @@ export class ChannelHub {
     this.talkEnd(client);
     channel.members.delete(client);
     this.broadcast(channel, { type: "member-left", clientId: client.id });
-    if (channel.members.size === 0) this.channels.delete(client.channel!);
     client.channel = null;
   }
 
